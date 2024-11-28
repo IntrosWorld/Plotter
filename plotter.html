@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Graph with Dark Theme</title>
+    <style>
+        /* Dark theme styles for modern sleek look */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1E1E2D;
+            color: #EDEDED;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: rgba(44, 44, 56, 0.9);
+            border-radius: 12px;
+            box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.7);
+        }
+
+        h2 {
+            font-size: 24px;
+            color: #E0E0E0;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 20px;
+            background-color: #3A3A4F;
+            color: #EDEDED;
+            border: 1px solid #444;
+            border-radius: 8px;
+            font-size: 14px;
+            padding: 10px;
+        }
+
+        textarea:focus {
+            border-color: #76E4B7;
+            outline: none;
+        }
+
+        canvas {
+            width: 100%;
+            max-width: 100%;
+            background-color: #2E2E3F;
+            border: 1px solid #444;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        /* Tooltip-style coordinate labels */
+        .tooltip {
+            position: absolute;
+            background-color: #3C3C53;
+            color: #D0D0E5;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Dynamic Graph with Smooth Curves</h2>
+        <p>Copy two columns of data (X and Y coordinates) from Excel and paste them below:</p>
+        <textarea id="dataInput" placeholder="Paste your data here (X and Y columns)"></textarea>
+        <canvas id="graphCanvas" width="800" height="400"></canvas>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("graphCanvas");
+        const ctx = canvas.getContext("2d");
+        const tooltip = document.getElementById("tooltip");
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+
+        // Variables for graph scaling
+        let xMin, xMax, yMin, yMax;
+        let xScale, yScale;
+
+        // Transform data points to canvas coordinates
+        function transform(point) {
+            return {
+                x: (point.x - xMin) * xScale,
+                y: canvasHeight - (point.y - yMin) * yScale // Flip Y-axis
+            };
+        }
+
+        // Draw grid and tick marks
+        function drawGridAndTicks() {
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 1;
+            ctx.font = "12px Arial";
+            ctx.fillStyle = "#BBBBBB";
+
+            // Vertical grid lines and X-axis tick labels
+            for (let x = xMin; x <= xMax; x += (xMax - xMin) / 10) {
+                const { x: gridX } = transform({ x, y: yMin });
+                ctx.beginPath();
+                ctx.moveTo(gridX, 0);
+                ctx.lineTo(gridX, canvasHeight);
+                ctx.stroke();
+                ctx.fillText(x.toFixed(1), gridX - 10, canvasHeight - 5);
+            }
+
+            // Horizontal grid lines and Y-axis tick labels
+            for (let y = yMin; y <= yMax; y += (yMax - yMin) / 10) {
+                const { y: gridY } = transform({ x: xMin, y });
+                ctx.beginPath();
+                ctx.moveTo(0, gridY);
+                ctx.lineTo(canvasWidth, gridY);
+                ctx.stroke();
+                ctx.fillText(y.toFixed(1), 5, gridY + 5);
+            }
+        }
+
+        // Draw axes
+        function drawAxes() {
+            ctx.strokeStyle = "#EDEDED";
+            ctx.lineWidth = 2;
+
+            // X-axis
+            const xZero = transform({ x: 0, y: yMin }).y;
+            ctx.beginPath();
+            ctx.moveTo(0, xZero);
+            ctx.lineTo(canvasWidth, xZero);
+            ctx.stroke();
+
+            // Y-axis
+            const yZero = transform({ x: xMin, y: 0 }).x;
+            ctx.beginPath();
+            ctx.moveTo(yZero, 0);
+            ctx.lineTo(yZero, canvasHeight);
+            ctx.stroke();
+        }
+
+        // Plot data points and show their coordinates
+        function plotPoints(points) {
+            ctx.fillStyle = "#FF6F61";
+            ctx.font = "12px Arial";
+            points.forEach(point => {
+                const { x, y } = transform(point);
+
+                // Draw the point
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Show coordinates of the point
+                ctx.fillStyle = "#76E4B7";
+                ctx.fillText(`(${point.x.toFixed(1)}, ${point.y.toFixed(1)})`, x + 5, y - 5);
+            });
+        }
+
+        // Draw smooth curve through points using Catmull-Rom splines
+        function drawSmoothCurve(points) {
+            ctx.strokeStyle = "#76E4B7";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            const transformedPoints = points.map(transform);
+
+            for (let i = 0; i < transformedPoints.length - 1; i++) {
+                const p0 = transformedPoints[i > 0 ? i - 1 : i];
+                const p1 = transformedPoints[i];
+                const p2 = transformedPoints[i + 1];
+                const p3 = transformedPoints[i + 2 < transformedPoints.length ? i + 2 : i + 1];
+
+                // Catmull-Rom interpolation
+                for (let t = 0; t < 1; t += 0.02) {
+                    const x = 0.5 * (
+                        (2 * p1.x) +
+                        (-p0.x + p2.x) * t +
+                        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t * t +
+                        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t * t * t
+                    );
+                    const y = 0.5 * (
+                        (2 * p1.y) +
+                        (-p0.y + p2.y) * t +
+                        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t * t +
+                        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t * t * t
+                    );
+
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        // Parse pasted data
+        function parseData(input) {
+            const rows = input.trim().split("\n");
+            const points = rows.map(row => {
+                const [x, y] = row.trim().split(/[\s,]+/).map(Number);
+                return { x, y };
+            });
+            return points;
+        }
+
+        // Update graph when data is pasted
+        function updateGraph(input) {
+            const points = parseData(input);
+
+            // Find min/max values for scaling
+            xMin = Math.min(...points.map(p => p.x));
+            xMax = Math.max(...points.map(p => p.x));
+            yMin = Math.min(...points.map(p => p.y));
+            yMax = Math.max(...points.map(p => p.y));
+
+            // Add padding to the axes
+            const xPadding = (xMax - xMin) * 0.1;
+            const yPadding = (yMax - yMin) * 0.1;
+            xMin -= xPadding;
+            xMax += xPadding;
+            yMin -= yPadding;
+            yMax += yPadding;
+
+            // Update scaling factors
+            xScale = canvasWidth / (xMax - xMin);
+            yScale = canvasHeight / (yMax - yMin);
+
+            // Clear canvas and draw everything
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            drawGridAndTicks();
+            drawAxes();
+            plotPoints(points);
+            drawSmoothCurve(points);
+        }
+
+        // Event listener for textarea input
+        document.getElementById("dataInput").addEventListener("input", (event) => {
+            updateGraph(event.target.value);
+        });
+    </script>
+</body>
+</html>
