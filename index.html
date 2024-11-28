@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Graph with Dark Theme</title>
+    <title>Dynamic Graph with Smooth Curves</title>
     <style>
-        /* Dark theme styles for modern sleek look */
+        /* Dark theme styles */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1E1E2D;
@@ -53,19 +53,6 @@
             background-color: #2E2E3F;
             border: 1px solid #444;
             border-radius: 10px;
-            padding: 10px;
-        }
-
-        /* Tooltip-style coordinate labels */
-        .tooltip {
-            position: absolute;
-            background-color: #3C3C53;
-            color: #D0D0E5;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            pointer-events: none;
-            display: none;
         }
     </style>
 </head>
@@ -75,13 +62,11 @@
         <p>Copy two columns of data (X and Y coordinates) from Excel and paste them below:</p>
         <textarea id="dataInput" placeholder="Paste your data here (X and Y columns)"></textarea>
         <canvas id="graphCanvas" width="800" height="400"></canvas>
-        <div class="tooltip" id="tooltip"></div>
     </div>
 
     <script>
         const canvas = document.getElementById("graphCanvas");
         const ctx = canvas.getContext("2d");
-        const tooltip = document.getElementById("tooltip");
 
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
@@ -131,14 +116,12 @@
             ctx.strokeStyle = "#EDEDED";
             ctx.lineWidth = 2;
 
-            // X-axis
             const xZero = transform({ x: 0, y: yMin }).y;
             ctx.beginPath();
             ctx.moveTo(0, xZero);
             ctx.lineTo(canvasWidth, xZero);
             ctx.stroke();
 
-            // Y-axis
             const yZero = transform({ x: xMin, y: 0 }).x;
             ctx.beginPath();
             ctx.moveTo(yZero, 0);
@@ -152,34 +135,24 @@
             ctx.font = "12px Arial";
             points.forEach(point => {
                 const { x, y } = transform(point);
-
-                // Draw the point
                 ctx.beginPath();
                 ctx.arc(x, y, 4, 0, 2 * Math.PI);
                 ctx.fill();
-
-                // Show coordinates of the point
                 ctx.fillStyle = "#76E4B7";
-                ctx.fillText(`(${point.x.toFixed(1)}, ${point.y.toFixed(1)})`, x + 5, y - 5);
+                ctx.fillText(`(${point.x.toFixed(1)}, ${point.y.toFixed(2)})`, x + 5, y - 5);
             });
         }
 
-        // Draw smooth curve through points using Catmull-Rom splines
-        function drawSmoothCurve(points) {
-            ctx.strokeStyle = "#76E4B7";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
+        // Precompute smooth curve points
+        function computeSmoothCurvePoints(points) {
+            const curvePoints = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i > 0 ? i - 1 : i];
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
 
-            const transformedPoints = points.map(transform);
-
-            for (let i = 0; i < transformedPoints.length - 1; i++) {
-                const p0 = transformedPoints[i > 0 ? i - 1 : i];
-                const p1 = transformedPoints[i];
-                const p2 = transformedPoints[i + 1];
-                const p3 = transformedPoints[i + 2 < transformedPoints.length ? i + 2 : i + 1];
-
-                // Catmull-Rom interpolation
-                for (let t = 0; t < 1; t += 0.02) {
+                for (let t = 0; t < 1; t += 0.05) { // Reduced interpolation density for performance
                     const x = 0.5 * (
                         (2 * p1.x) +
                         (-p0.x + p2.x) * t +
@@ -192,10 +165,23 @@
                         (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t * t +
                         (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t * t * t
                     );
-
-                    ctx.lineTo(x, y);
+                    curvePoints.push({ x, y });
                 }
             }
+            return curvePoints;
+        }
+
+        // Draw smooth curve
+        function drawSmoothCurve(points) {
+            const curvePoints = computeSmoothCurvePoints(points).map(transform);
+            ctx.strokeStyle = "#76E4B7";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            curvePoints.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
 
             ctx.stroke();
         }
@@ -203,11 +189,10 @@
         // Parse pasted data
         function parseData(input) {
             const rows = input.trim().split("\n");
-            const points = rows.map(row => {
+            return rows.map(row => {
                 const [x, y] = row.trim().split(/[\s,]+/).map(Number);
                 return { x, y };
             });
-            return points;
         }
 
         // Update graph when data is pasted
